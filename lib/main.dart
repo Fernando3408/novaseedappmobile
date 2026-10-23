@@ -1,12 +1,15 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:uuid/uuid.dart';
 
 import 'core/local_database.dart';
+import 'core/bootstrap_service.dart';
 import 'core/mobile_api_client.dart';
 import 'core/sync_service.dart';
+import 'data/mock_data.dart';
 
 void main() => runApp(const NovaSeedApp());
 
@@ -191,6 +194,9 @@ class _PageBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (title == 'Ensayos') return const _TrialsPage();
+    if (title == 'Invernadero') return const _GreenhousePage();
+    if (title == 'Mapeo') return const _MappingPage();
+    if (title == 'Métricas') return const _MetricsPage();
     final isMetrics = title == 'Métricas';
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 24, 20, 28),
@@ -264,6 +270,12 @@ class _TrialsPageState extends State<_TrialsPage> {
         const SizedBox(height: 22),
         const _TrialContextCard(),
         const SizedBox(height: 18),
+        OutlinedButton.icon(
+          onPressed: _downloadBootstrap,
+          icon: const Icon(Icons.download_outlined),
+          label: const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Text('DESCARGAR DATOS ASIGNADOS')),
+        ),
+        const SizedBox(height: 22),
         const Text('VARIEDAD / PLANTA', style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: .4)),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
@@ -325,6 +337,148 @@ class _TrialsPageState extends State<_TrialsPage> {
     _valueController.clear();
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Guardado localmente. Queda pendiente de sincronización.')));
   }
+
+  Future<void> _downloadBootstrap() async {
+    try {
+      final result = await BootstrapService(
+        MobileApiClient(baseUrl: 'https://novaseed.weblabs.cl'),
+      ).download();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Descargados ${result.blocks} ensayos, ${result.varieties} variedades y ${result.features} características.')));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo descargar. Revisa conexión, sesión y API móvil.')));
+    }
+  }
+}
+
+class _GreenhousePage extends StatelessWidget {
+  const _GreenhousePage();
+
+  @override
+  Widget build(BuildContext context) => ListView(
+        padding: const EdgeInsets.fromLTRB(20, 24, 20, 28),
+        children: [
+          Text('Invernadero', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 6),
+          Text('Cruces asignados y avances registrados en terreno.', style: TextStyle(color: Colors.grey.shade700)),
+          const SizedBox(height: 22),
+          for (final cross in mockCrosses) ...[
+            _CrossCard(cross: cross),
+            const SizedBox(height: 12),
+          ],
+        ],
+      );
+}
+
+class _CrossCard extends StatelessWidget {
+  const _CrossCard({required this.cross});
+  final MockGreenhouseCross cross;
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = cross.target == 0 ? 0.0 : cross.berries / cross.target;
+    return Card(
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [Text('CRUCE · ${cross.code}', style: const TextStyle(fontWeight: FontWeight.bold)), const Spacer(), Chip(label: Text(cross.status), visualDensity: VisualDensity.compact)]),
+          const SizedBox(height: 10),
+          Text('Madre: ${cross.mother}'),
+          Text('Padre: ${cross.father}'),
+          const SizedBox(height: 14),
+          Text('Bayas actuales: ${cross.berries} / objetivo: ${cross.target}'),
+          const SizedBox(height: 8),
+          LinearProgressIndicator(value: progress.clamp(0, 1)),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(onPressed: () => _saveGreenhouseEvent(context), icon: const Icon(Icons.add_chart_outlined), label: const Text('Registrar observación')),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _saveGreenhouseEvent(BuildContext context) async {
+    await LocalDatabase.instance.addFieldEvent(
+      clientUuid: const Uuid().v4(),
+      entity: 'greenhouse_observation',
+      localId: cross.code,
+      payload: jsonEncode({'berries': cross.berries, 'target': cross.target, 'observation': 'Captura de terreno'}),
+    );
+    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Observación de invernadero guardada localmente.')));
+  }
+}
+
+class _MappingPage extends StatefulWidget {
+  const _MappingPage();
+
+  @override
+  State<_MappingPage> createState() => _MappingPageState();
+}
+
+class _MappingPageState extends State<_MappingPage> {
+  String selected = '08';
+  final Map<String, int> counts = {for (final type in ['Rojo', 'Rojo carne', 'Azul', 'Amarillo', 'Alargado']) type: 0};
+
+  @override
+  Widget build(BuildContext context) => ListView(
+        padding: const EdgeInsets.fromLTRB(20, 24, 20, 28),
+        children: [
+          Text('Mapeo de cruces', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 6),
+          Text('Selecciona una posición para revisar y registrar conteos.', style: TextStyle(color: Colors.grey.shade700)),
+          const SizedBox(height: 22),
+          Card(elevation: 0, child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('CRUCE C-014 · LÍNEA L-03', style: TextStyle(fontWeight: FontWeight.bold)), const SizedBox(height: 6), Text('Posición $selected · Paso 2 de 3')]))),
+          const SizedBox(height: 16),
+          const Text('POSICIONES', style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: .4)),
+          const SizedBox(height: 8),
+          Wrap(spacing: 8, children: [for (final item in mockPositions) ChoiceChip(label: Text(item.$1), selected: selected == item.$1, onSelected: (_) => setState(() => selected = item.$1))]),
+          const SizedBox(height: 20),
+          const Text('CONTEO POR TIPO', style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: .4)),
+          const SizedBox(height: 8),
+          Wrap(spacing: 10, runSpacing: 10, children: [for (final type in counts.keys) _CountTile(label: type, count: counts[type]!, onDecrease: () => setState(() => counts[type] = counts[type]! > 0 ? counts[type]! - 1 : 0), onIncrease: () => setState(() => counts[type] = counts[type]! + 1))]),
+          const SizedBox(height: 18),
+          const TextField(decoration: InputDecoration(labelText: 'Observación', hintText: 'Agregar observación', prefixIcon: Icon(Icons.notes_outlined))),
+          const SizedBox(height: 16),
+          FilledButton(onPressed: _savePosition, child: const Padding(padding: EdgeInsets.symmetric(vertical: 14), child: Text('GUARDAR POSICIÓN'))),
+        ],
+      );
+
+  Future<void> _savePosition() async {
+    await LocalDatabase.instance.addFieldEvent(
+      clientUuid: const Uuid().v4(),
+      entity: 'mapping_position',
+      localId: selected,
+      payload: jsonEncode({'mapout_id': 1, 'position': selected, 'counts': counts}),
+    );
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Posición guardada localmente.')));
+  }
+}
+
+class _CountTile extends StatelessWidget {
+  const _CountTile({required this.label, required this.count, required this.onDecrease, required this.onIncrease});
+  final String label;
+  final int count;
+  final VoidCallback onDecrease;
+  final VoidCallback onIncrease;
+
+  @override
+  Widget build(BuildContext context) => Container(width: 145, padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)), child: Column(children: [Text(label), const SizedBox(height: 8), Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [IconButton(onPressed: onDecrease, icon: const Icon(Icons.remove)), Text('$count', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)), IconButton(onPressed: onIncrease, icon: const Icon(Icons.add))])]));
+}
+
+class _MetricsPage extends StatelessWidget {
+  const _MetricsPage();
+
+  @override
+  Widget build(BuildContext context) => ListView(padding: const EdgeInsets.fromLTRB(20, 24, 20, 28), children: [
+        Text('Comparar beta', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800)),
+        const SizedBox(height: 6),
+        Text('Cálculo sobre el conjunto disponible en el dispositivo.', style: TextStyle(color: Colors.grey.shade700)),
+        const SizedBox(height: 22),
+        Card(elevation: 0, color: const Color(0xFFDDEBE3), child: const Padding(padding: EdgeInsets.all(18), child: Row(children: [Icon(Icons.info_outline), SizedBox(width: 12), Expanded(child: Text('No hay datos descargados. La comparación no estima valores faltantes.'))]))),
+        const SizedBox(height: 16),
+        Card(elevation: 0, child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('COBERTURA LOCAL', style: TextStyle(fontWeight: FontWeight.bold)), const SizedBox(height: 12), const Text('0 de 40 plantas descargadas'), const SizedBox(height: 10), const LinearProgressIndicator(value: 0), const SizedBox(height: 14), const Text('Última actualización: sin descarga', style: TextStyle(color: Colors.grey))]))),
+       ]);
 }
 
 class _TrialContextCard extends StatelessWidget {

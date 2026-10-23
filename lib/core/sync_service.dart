@@ -1,5 +1,6 @@
 import 'local_database.dart';
 import 'mobile_api_client.dart';
+import 'dart:convert';
 
 class SyncService {
   SyncService({required this._client, LocalDatabase? database})
@@ -11,7 +12,8 @@ class SyncService {
 
   Future<SyncSummary> pushPending() async {
     final rows = await _database.pendingObservations();
-    if (rows.isEmpty) return const SyncSummary(accepted: 0, rejected: 0);
+    final events = await _database.pendingFieldEvents();
+    if (rows.isEmpty && events.isEmpty) return const SyncSummary(accepted: 0, rejected: 0);
 
     final mutations = rows.map((row) => {
       'client_uuid': row['client_uuid'],
@@ -27,6 +29,17 @@ class SyncService {
         'block_id': row['block_id'],
       },
     }).toList();
+    mutations.addAll(events.map((event) {
+      final payload = jsonDecode(event['payload'] as String) as Map<String, dynamic>;
+      return {
+        'client_uuid': event['client_uuid'],
+        'idempotency_key': event['client_uuid'],
+        'entity': event['entity'],
+        'base_version': null,
+        'captured_at': event['captured_at'],
+        'payload': payload,
+      };
+    }));
 
     final response = await _client.push(mutations);
     final results = (response.data['results'] as List<dynamic>? ?? const []);
@@ -41,9 +54,23 @@ class SyncService {
           break;
         }
       }
-      if (row == null) continue;
+      if (row != null) {
+        final status = result['status'] == 'accepted' ? 'synced' : 'rejected';
+        await _database.markObservation(row['id'] as int, status);
+        if (status == 'synced') accepted++;
+        if (status == 'rejected') rejected++;
+        continue;
+      }
+      Map<String, dynamic>? event;
+      for (final candidate in events) {
+        if (candidate['client_uuid'] == clientUuid) {
+          event = candidate;
+          break;
+        }
+      }
+      if (event == null) continue;
       final status = result['status'] == 'accepted' ? 'synced' : 'rejected';
-      await _database.markObservation(row['id'] as int, status);
+      await _database.markFieldEvent(event['id'] as int, status);
       if (status == 'synced') accepted++;
       if (status == 'rejected') rejected++;
     }

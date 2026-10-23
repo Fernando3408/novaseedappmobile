@@ -1,0 +1,35 @@
+{
+  "contract_version": "fixture-1",
+  "source": "local development data",
+  "features": [
+    {"id": 1, "name": "Altura de planta", "year": "2026", "type": 3, "slug": "altura-de-planta", "repeat_do": 0, "frying_test": 0, "typefeature_id": 3, "localities_viewer": 1},
+    {"id": 2, "name": "Estado de hoja", "year": "2026", "type": 1, "slug": "estado-de-hoja", "repeat_do": 0, "frying_test": 0, "typefeature_id": 1, "localities_viewer": 1},
+    {"id": 3, "name": "Floración", "year": "2026", "type": 2, "slug": "floracion", "repeat_do": 1, "frying_test": 0, "typefeature_id": 2, "localities_viewer": 0}
+  ],
+  "values": [
+    {"id": 1, "feature_id": 2, "name": "Buena", "value": "buena"},
+    {"id": 2, "feature_id": 2, "name": "Regular", "value": "regular"},
+    {"id": 3, "feature_id": 2, "name": "Mala", "value": "mala"},
+    {"id": 4, "feature_id": 3, "name": "Si", "value": "si"},
+    {"id": 5, "feature_id": 3, "name": "No", "value": "no"}
+  ],
+  "blocks": [
+    {"id": 14, "description": "Ensayo NS-2026-014", "lines": 12, "year": 2026, "limit": 6, "latitude": -33.0472, "longitude": -71.6127},
+    {"id": 22, "description": "Ensayo NS-2026-022", "lines": 10, "year": 2026, "limit": 6, "latitude": -33.05, "longitude": -71.61}
+  ],
+  "blocksvarity": [
+    {"id": 101, "block_id": 14, "varity_id": 3, "position": "018", "type": "ensayo"},
+    {"id": 102, "block_id": 14, "varity_id": 7, "position": "024", "type": "ensayo"}
+  ],
+  "varities": [
+    {"id": 3, "mother_id": 8, "father_id": 12, "code": "V-003", "year": 2026, "name": "Variedad 03", "greenhouse_id": 4, "market_id": 1, "berries": 26, "berries_objective": 40, "status": 1},
+    {"id": 7, "mother_id": 11, "father_id": 4, "code": "V-007", "year": 2026, "name": "Variedad 07", "greenhouse_id": 4, "market_id": 1, "berries": 40, "berries_objective": 40, "status": 2}
+  ],
+  "characteristics": [],
+  "mapouts": [
+    {"id": 1, "year": "2026", "lines": 3, "step": 2}
+  ],
+  "positions": [
+    {"id": 1, "mapout_id": 1, "line": 3, "positionY": 8, "varity_id": 3, "step": 0, "observation": null, "red": 0, "redmeat": 0, "blue": 0, "yellow": 0, "elongated": 0}
+  ]
+}
