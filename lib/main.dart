@@ -10,6 +10,7 @@ import 'core/bootstrap_service.dart';
 import 'core/mobile_api_client.dart';
 import 'core/sync_service.dart';
 import 'data/mock_data.dart';
+import 'data/fixture_seeder.dart';
 
 void main() => runApp(const NovaSeedApp());
 
@@ -35,8 +36,65 @@ class NovaSeedApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const FieldShell(),
+      home: const LoginPage(),
     );
+  }
+}
+
+class LoginPage extends StatefulWidget {
+  const LoginPage({super.key});
+
+  @override
+  State<LoginPage> createState() => _LoginPageState();
+}
+
+class _LoginPageState extends State<LoginPage> {
+  final userController = TextEditingController(text: 'demo@novaseed.local');
+  final passwordController = TextEditingController(text: 'demo');
+  bool obscurePassword = true;
+
+  @override
+  void dispose() {
+    userController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(28),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Icon(Icons.eco_outlined, size: 54, color: Color(0xFF185C4A)),
+                  const SizedBox(height: 20),
+                  Text('NovaSeed', style: Theme.of(context).textTheme.displaySmall?.copyWith(fontWeight: FontWeight.w800, color: const Color(0xFF185C4A))),
+                  const SizedBox(height: 8),
+                  Text('Aplicación de campo offline', style: TextStyle(fontSize: 17, color: Colors.grey.shade700)),
+                  const SizedBox(height: 34),
+                  TextField(controller: userController, decoration: const InputDecoration(labelText: 'Usuario', prefixIcon: Icon(Icons.person_outline))),
+                  const SizedBox(height: 14),
+                  TextField(controller: passwordController, obscureText: obscurePassword, decoration: InputDecoration(labelText: 'Contraseña', prefixIcon: const Icon(Icons.lock_outline), suffixIcon: IconButton(onPressed: () => setState(() => obscurePassword = !obscurePassword), icon: Icon(obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined)))),
+                  const SizedBox(height: 22),
+                  SizedBox(width: double.infinity, child: FilledButton(onPressed: _login, child: const Padding(padding: EdgeInsets.symmetric(vertical: 14), child: Text('INGRESAR')))),
+                  const SizedBox(height: 16),
+                  const Center(child: Text('Modo demostración · datos locales', style: TextStyle(color: Colors.grey))),
+                ]),
+              ),
+            ),
+          ),
+        ),
+      );
+
+  void _login() {
+    if (userController.text.trim().isEmpty || passwordController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ingresa usuario y contraseña.')));
+      return;
+    }
+    Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const FieldShell()));
   }
 }
 
@@ -64,6 +122,15 @@ class _FieldShellState extends State<FieldShell> {
     super.initState();
     _connectivitySubscription = Connectivity().onConnectivityChanged.listen(_handleConnectivity);
     _checkConnectivity();
+    _seedFixture();
+  }
+
+  Future<void> _seedFixture() async {
+    try {
+      await FixtureSeeder().seed();
+    } on StateError {
+      // Native SQLite is unavailable in widget tests.
+    }
   }
 
   Future<void> _checkConnectivity() async {
@@ -112,6 +179,7 @@ class _FieldShellState extends State<FieldShell> {
               child: Icon(Icons.sync_outlined),
             ),
           ),
+          IconButton(tooltip: 'Cerrar sesión', onPressed: _logout, icon: const Icon(Icons.account_circle_outlined)),
           const SizedBox(width: 8),
         ],
       ),
@@ -134,7 +202,14 @@ class _FieldShellState extends State<FieldShell> {
     );
   }
 
-  void _showSync(BuildContext context) {
+  Future<void> _showSync(BuildContext context) async {
+    var pending = 0;
+    try {
+      pending = await LocalDatabase.instance.pendingCount();
+    } on StateError {
+      pending = 0;
+    }
+    if (!context.mounted) return;
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -146,7 +221,7 @@ class _FieldShellState extends State<FieldShell> {
           children: [
             Text('Centro de sincronización', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             SizedBox(height: 16),
-            ListTile(leading: Icon(Icons.pending_actions), title: Text('2 cambios pendientes'), subtitle: Text('Se enviarán cuando vuelva la conexión')),
+            ListTile(leading: Icon(Icons.pending_actions), title: Text('$pending cambios pendientes'), subtitle: Text('Ensayos, invernadero y mapeo')),
             ListTile(leading: Icon(Icons.cloud_done_outlined), title: Text('Última descarga'), subtitle: Text('Aún no se ha descargado información real')),
             SizedBox(height: 8),
             SizedBox(
@@ -182,6 +257,10 @@ class _FieldShellState extends State<FieldShell> {
         const SnackBar(content: Text('No fue posible conectar con la API móvil. Los datos siguen guardados localmente.')),
       );
     }
+  }
+
+  void _logout() {
+    Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const LoginPage()), (_) => false);
   }
 }
 
@@ -237,11 +316,39 @@ class _TrialsPageState extends State<_TrialsPage> {
   String _feature = 'Altura de planta';
   String _plant = 'Variedad 03 · Planta 018';
   int _pending = 0;
+  List<Map<String, dynamic>> _features = const [];
+  List<Map<String, dynamic>> _values = const [];
+  List<String> _plants = const [];
+  String? _selectedOption;
+  bool _booleanValue = false;
 
   @override
   void initState() {
     super.initState();
     _loadPendingCount();
+    _loadFeatures();
+  }
+
+  Future<void> _loadFeatures() async {
+    try {
+      await FixtureSeeder().seed();
+      final features = await LocalDatabase.instance.catalogFeatures();
+      final values = await LocalDatabase.instance.catalogValues();
+      final assignments = await LocalDatabase.instance.catalogAssignments();
+      final varieties = await LocalDatabase.instance.catalogVarieties();
+      final varietyNames = {for (final variety in varieties) variety['id']: variety['name'] as String};
+      final plants = assignments.map((assignment) => '${varietyNames[assignment['variety_id']] ?? 'Variedad'} · Planta ${assignment['position']}').toList();
+      if (!mounted) return;
+      setState(() {
+        _features = features;
+        _values = values;
+        _plants = plants;
+        if (plants.isNotEmpty) _plant = plants.first;
+        if (features.isNotEmpty) _feature = features.first['name'] as String;
+      });
+    } on StateError {
+      // Native SQLite is unavailable in widget tests.
+    }
   }
 
   Future<void> _loadPendingCount() async {
@@ -279,34 +386,27 @@ class _TrialsPageState extends State<_TrialsPage> {
         const Text('VARIEDAD / PLANTA', style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: .4)),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
-          initialValue: _plant,
+          initialValue: _plants.isEmpty ? null : _plant,
           decoration: const InputDecoration(prefixIcon: Icon(Icons.local_florist_outlined)),
-          items: const [
-            DropdownMenuItem(value: 'Variedad 03 · Planta 018', child: Text('Variedad 03 · Planta 018')),
-            DropdownMenuItem(value: 'Variedad 07 · Planta 024', child: Text('Variedad 07 · Planta 024')),
-          ],
+          items: [for (final plant in _plants) DropdownMenuItem(value: plant, child: Text(plant))],
           onChanged: (value) => setState(() => _plant = value!),
         ),
         const SizedBox(height: 18),
         const Text('CARACTERÍSTICA DEL CATÁLOGO', style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: .4)),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
-          initialValue: _feature,
+          initialValue: _features.isEmpty ? null : _feature,
           decoration: const InputDecoration(prefixIcon: Icon(Icons.tune)),
-          items: const [
-            DropdownMenuItem(value: 'Altura de planta', child: Text('Altura de planta · numérica')),
-            DropdownMenuItem(value: 'Estado de hoja', child: Text('Estado de hoja · selección')),
+          items: [
+            for (final feature in _features)
+              DropdownMenuItem(value: feature['name'] as String, child: Text('${feature['name']} · tipo ${feature['type']}')),
           ],
           onChanged: (value) => setState(() => _feature = value!),
         ),
         const SizedBox(height: 18),
         const Text('VALOR REGISTRADO', style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: .4)),
         const SizedBox(height: 8),
-        TextField(
-          controller: _valueController,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(hintText: 'Ingresar valor', prefixIcon: Icon(Icons.edit_outlined), suffixText: 'cm'),
-        ),
+        _buildFeatureInput(),
         const SizedBox(height: 22),
         FilledButton.icon(
           onPressed: _save,
@@ -319,8 +419,38 @@ class _TrialsPageState extends State<_TrialsPage> {
     );
   }
 
+  Widget _buildFeatureInput() {
+    final selected = _features.where((feature) => feature['name'] == _feature).firstOrNull;
+    final type = selected?['type'];
+    if (type == 1) {
+      final featureId = selected?['id'];
+      final options = _values.where((value) => value['feature_id'] == featureId).map((value) => value['name'] as String).toList();
+      return DropdownButtonFormField<String>(
+        initialValue: _selectedOption,
+        decoration: const InputDecoration(prefixIcon: Icon(Icons.list_alt_outlined), hintText: 'Seleccionar valor'),
+        items: [for (final option in options) DropdownMenuItem(value: option, child: Text(option))],
+        onChanged: (value) => setState(() => _selectedOption = value),
+      );
+    }
+    if (type == 2) {
+      return SwitchListTile.adaptive(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+        tileColor: Colors.white,
+        title: Text(_booleanValue ? 'Sí' : 'No'),
+        value: _booleanValue,
+        onChanged: (value) => setState(() => _booleanValue = value),
+      );
+    }
+    return TextField(
+      controller: _valueController,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      decoration: const InputDecoration(hintText: 'Ingresar valor', prefixIcon: Icon(Icons.edit_outlined), suffixText: 'cm'),
+    );
+  }
+
   Future<void> _save() async {
-    if (_valueController.text.trim().isEmpty) {
+    final value = _currentValue();
+    if (value.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ingresa un valor antes de guardar.')));
       return;
     }
@@ -329,13 +459,20 @@ class _TrialsPageState extends State<_TrialsPage> {
       blockId: 14,
       varityId: _plant.startsWith('Variedad 03') ? 3 : 7,
       featureName: _feature,
-      value: _valueController.text.trim(),
+      value: value,
     );
     final count = await LocalDatabase.instance.pendingCount();
     if (!mounted) return;
     setState(() => _pending = count);
     _valueController.clear();
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Guardado localmente. Queda pendiente de sincronización.')));
+  }
+
+  String _currentValue() {
+    final type = _features.where((feature) => feature['name'] == _feature).firstOrNull?['type'];
+    if (type == 1) return _selectedOption ?? '';
+    if (type == 2) return _booleanValue ? 'si' : 'no';
+    return _valueController.text.trim();
   }
 
   Future<void> _downloadBootstrap() async {

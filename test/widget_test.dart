@@ -6,6 +6,10 @@ void main() {
   testWidgets('muestra el shell de trabajo de campo', (tester) async {
     await tester.pumpWidget(const NovaSeedApp());
 
+    expect(find.text('NovaSeed'), findsOneWidget);
+    expect(find.text('INGRESAR'), findsOneWidget);
+    await tester.tap(find.text('INGRESAR'));
+    await tester.pumpAndSettle();
     expect(find.text('NOVASEED'), findsOneWidget);
     expect(find.text('Ensayos'), findsWidgets);
     expect(find.text('SIN CONEXIÓN'), findsOneWidget);

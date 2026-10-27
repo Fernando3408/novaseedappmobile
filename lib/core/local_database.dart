@@ -10,7 +10,7 @@ class LocalDatabase {
   Future<Database> get database async {
     if (_database != null) return _database!;
     final path = join(await getDatabasesPath(), 'novaseed_mobile.db');
-    _database = await openDatabase(path, version: 2, onCreate: (db, version) async {
+    _database = await openDatabase(path, version: 3, onCreate: (db, version) async {
       await db.execute('''
         CREATE TABLE observations (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -34,6 +34,7 @@ class LocalDatabase {
           sync_status TEXT NOT NULL DEFAULT 'pending'
         )
       ''');
+      await _createCatalogTables(db);
     }, onUpgrade: (db, oldVersion, newVersion) async {
       if (oldVersion < 2) {
         await db.execute('''
@@ -48,8 +49,41 @@ class LocalDatabase {
           )
         ''');
       }
+      if (oldVersion < 3) await _createCatalogTables(db);
     });
     return _database!;
+  }
+
+  Future<void> _createCatalogTables(Database db) async {
+    await db.execute('CREATE TABLE IF NOT EXISTS features (id INTEGER PRIMARY KEY, name TEXT NOT NULL, type INTEGER, year TEXT, repeat_do INTEGER, localities_viewer INTEGER)');
+    await db.execute('CREATE TABLE IF NOT EXISTS feature_values (id INTEGER PRIMARY KEY, feature_id INTEGER NOT NULL, name TEXT, value TEXT)');
+    await db.execute('CREATE TABLE IF NOT EXISTS blocks (id INTEGER PRIMARY KEY, description TEXT, lines INTEGER, year INTEGER, max_positions INTEGER)');
+    await db.execute('CREATE TABLE IF NOT EXISTS varieties (id INTEGER PRIMARY KEY, name TEXT, code TEXT, year INTEGER, berries INTEGER, berries_objective INTEGER, status INTEGER)');
+    await db.execute('CREATE TABLE IF NOT EXISTS block_varieties (id INTEGER PRIMARY KEY, block_id INTEGER, variety_id INTEGER, position TEXT, type TEXT)');
+  }
+
+  Future<void> replaceCatalog(Map<String, dynamic> data) async {
+    final db = await database;
+    await db.transaction((transaction) async {
+      for (final table in ['features', 'feature_values', 'blocks', 'varieties', 'block_varieties']) {
+        await transaction.delete(table);
+      }
+      for (final item in (data['features'] as List<dynamic>? ?? const [])) {
+        await transaction.insert('features', {'id': item['id'], 'name': item['name'], 'type': item['type'], 'year': item['year']?.toString(), 'repeat_do': item['repeat_do'], 'localities_viewer': item['localities_viewer']});
+      }
+      for (final item in (data['values'] as List<dynamic>? ?? const [])) {
+        await transaction.insert('feature_values', {'id': item['id'], 'feature_id': item['feature_id'], 'name': item['name'], 'value': item['value']});
+      }
+      for (final item in (data['blocks'] as List<dynamic>? ?? const [])) {
+        await transaction.insert('blocks', {'id': item['id'], 'description': item['description'], 'lines': item['lines'], 'year': item['year'], 'max_positions': item['limit']});
+      }
+      for (final item in (data['varities'] as List<dynamic>? ?? const [])) {
+        await transaction.insert('varieties', {'id': item['id'], 'name': item['name'], 'code': item['code'], 'year': item['year'], 'berries': item['berries'], 'berries_objective': item['berries_objective'], 'status': item['status']});
+      }
+      for (final item in (data['blocksvarity'] as List<dynamic>? ?? const [])) {
+        await transaction.insert('block_varieties', {'id': item['id'], 'block_id': item['block_id'], 'variety_id': item['varity_id'], 'position': item['position'], 'type': item['type']});
+      }
+    });
   }
 
   Future<int> addObservation({
@@ -108,4 +142,12 @@ class LocalDatabase {
     final db = await database;
     await db.update('field_events', {'sync_status': status}, where: 'id = ?', whereArgs: [id]);
   }
+
+  Future<List<Map<String, dynamic>>> catalogFeatures() async => (await database).query('features', orderBy: 'id');
+
+  Future<List<Map<String, dynamic>>> catalogValues() async => (await database).query('feature_values', orderBy: 'id');
+
+  Future<List<Map<String, dynamic>>> catalogAssignments() async => (await database).query('block_varieties', orderBy: 'id');
+
+  Future<List<Map<String, dynamic>>> catalogVarieties() async => (await database).query('varieties', orderBy: 'id');
 }

@@ -17,4 +17,19 @@ class MockDataSource {
     final data = await load();
     return List<Map<String, dynamic>>.from(data['blocks'] as List);
   }
+
+  Future<List<Map<String, dynamic>>> values() async {
+    final data = await load();
+    return List<Map<String, dynamic>>.from(data['values'] as List);
+  }
+
+  Future<List<Map<String, dynamic>>> blocksVariety() async {
+    final data = await load();
+    return List<Map<String, dynamic>>.from(data['blocksvarity'] as List);
+  }
+
+  Future<List<Map<String, dynamic>>> varieties() async {
+    final data = await load();
+    return List<Map<String, dynamic>>.from(data['varities'] as List);
+  }
 }
